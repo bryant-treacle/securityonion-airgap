@@ -49,6 +49,8 @@ do
                         ;;
         esac
 done
+# stop docker imagers
+so-elastic-stop
 
 if [ $REMOVE_EXISTING_IMAGES -eq 1 ]; then
     # Remove existing images
@@ -64,3 +66,6 @@ docker pull registry
 for image in $IMAGES; do
     docker pull $image
 done
+
+#Start docker images
+so-elastic-start

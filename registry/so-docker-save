@@ -68,7 +68,7 @@ for image in $(docker images | grep -E "$DOCKERHUB|registry" | awk '{ print $1 }
     [ ! -d $imagepath ] && mkdir -p $imagepath
     # Save images 
     echo "Saving $image to $imagepath/$imagename"
-    docker save $image -o $imagepath/$imagename
+    docker save $image > $imagepath/$imagename 2>/dev/null
 done
 
 echo "Complete!"
