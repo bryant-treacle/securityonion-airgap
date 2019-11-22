@@ -150,10 +150,15 @@ elif [ "$SENSOR" == 1 ]; then
     echo ""
     echo "We need to add autossh options to /root/.ssh/securityonion_ssh.conf and stop/re-build the autossh tunnel for our changes to take effect..."
     echo ""
-    if ! grep -q '5000:localhost:5000' /root/.ssh/securityonion_ssh.conf; then
-        echo 'AUTOSSH_OPTIONS="-L 5000:localhost:5000"' >> /root/.ssh/securityonion_ssh.conf
+    if grep -q '6379:localhost:6379' /root/.ssh/securityonion_ssh.conf; then
+       sed -i 's/6379:localhost:6379.*/6379:localhost:6379 -L 5000:localhost:5000 -L 3142:localhost:3142"/g' /root/.ssh/securityonion_ssh.conf
+    elif grep -q '6050:localhost:6050' /root/.ssh/securityonion_ssh.conf; then
+       sed -i 's/6050:localhost:6050.*/6050:localhost:6050 -L 5000:localhost:5000 -L 3142:localhost:3142"/g' /root/.ssh/securityonion_ssh.conf
+    elif ! grep -q '5000:localhost:5000' /root/.ssh/securityonion_ssh.conf; then
+       echo 'AUTOSSH_OPTIONS="-L 5000:localhost:5000 -L 3142:localhost:3142"' >> /root/.ssh/securityonion_ssh.conf
+    
     fi
-
+    
     pkill autossh && /usr/sbin/so-autossh-start
 
     ps aux | grep autossh

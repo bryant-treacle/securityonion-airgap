@@ -1,0 +1,436 @@
+#!/bin/bash
+#
+# Copyright 2014,2015,2016,2017,2018,2019 Security Onion Solutions, LLC
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+#########################################
+# Variables
+#########################################
+
+# A banner for user output
+BANNER="###########################################################################"
+
+# Most updates don't require a reboot, but kernel updates do.
+# Also, if we install mysql-server updates, we have to stop all services,
+# so we might as well reboot to bring all services back up.
+REBOOT=no
+
+# Skip interactive key presses
+SKIP=0
+
+# Log to file
+LOG=0
+
+# Grab SSH info so we can check the server for updates.
+SSH_CONF="/root/.ssh/securityonion_ssh.conf"
+KEY="/root/.ssh/securityonion"
+
+# Should we restart Docker containers at the end?
+RESTART_CONTAINERS=no
+
+# If Snort, Suricata, or Bro are updated, remind user to verify config at end
+SNORT=no
+SURICATA=no
+BRO=no
+WAZUH=no
+
+# no apt options by default
+# this is set later if the user passed the -y option to skip interactive mode
+APT_OPTIONS=""
+
+#########################################
+# Got r00t?
+#########################################
+if [[ $(/usr/bin/id -u) -ne 0 ]]; then
+    echo "This script needs to be run as root.  Please try again using sudo."
+    exit
+fi
+
+#########################################
+# Got lock?
+# soup: check for lock #1428
+# https://github.com/Security-Onion-Solutions/security-onion/issues/1428
+#########################################
+if /usr/bin/lsof /var/lib/dpkg/lock* >/dev/null; then
+	echo "/var/lib/dpkg/ is locked by another process!"
+	/usr/bin/lsof /var/lib/dpkg/lock*
+	exit
+fi
+
+#########################################
+# Options
+#########################################
+
+usage()
+{
+cat <<EOF
+
+Security Onion Update
+
+     Options:
+
+    -h      	This message
+	-l <file> 	Log stdout and stderr to specified file (Use with \`\`-y'')
+	-y		Skip interactive mode
+    -d		Skip Docker update (for Airgap Networks)
+Usage: $0
+EOF
+}
+
+while getopts "hl:y:d" OPTION
+do
+	case $OPTION in
+	h)
+		usage
+		exit 0
+		;;
+	l)
+		LOG=1
+		LOGFILE="$OPTARG"
+		;;
+	y)
+		SKIP=1
+		APT_OPTIONS="-o DPkg::options::=--force-confdef -o DPkg::options::=--force-confnew"
+		;;
+    d)
+                DOCKER_SKIP=1
+		;;
+	esac
+done
+echo "$DOCKER_SKIP"
+if [ $LOG -eq 1 ]; then
+#	exec > >(tee "$LOGFILE") 2>&1
+	echo -e "\n --> Logging stdout & stderr to $LOGFILE"
+	exec > "$LOGFILE" 2>&1
+fi
+
+if [ $SKIP -eq 1 ]; then
+	echo "You ran soup with the -y option, so we're setting APT_OPTIONS to:"
+	echo $APT_OPTIONS
+	echo "For more information, please see:"
+	echo "https://debian-handbook.info/browse/stable/sect.package-meta-information.html#sidebar.questions-conffiles"
+	echo
+fi
+
+#########################################
+# UPDATE!
+#########################################
+
+if [ $SKIP -ne 1 ]; then
+	# Prompt user to continue
+	echo $BANNER
+	echo
+	echo "SOUP - Security Onion UPdater"
+	echo
+	echo "soup will automatically install all available updates"
+	echo "and remove any old kernels (keeping at least two kernels)."
+	echo
+	echo "Please review the following for more information"
+	echo "about the update process and recent updates:"
+	echo "https://securityonion.net/docs/Upgrade"
+	echo "https://blog.securityonion.net"
+	echo
+	echo "If you're running a distributed deployment, please run soup"
+	echo "on the master server before updating sensors."
+	echo
+	echo "If mysql-server updates are available, soup will stop sensor processes"
+	echo "to ensure a clean update."
+	echo
+	echo "If soup installs mysql-server and/or kernel updates,"
+	echo "it will prompt you to reboot at the end."
+	echo $BANNER
+	echo
+	echo "Press Enter to continue or Ctrl-C to cancel."
+	read input
+
+	# If running a server-sensor deployment, check to see if the server needs updates.
+	if [ -f $SSH_CONF ]; then
+		source $SSH_CONF
+		echo "Checking to see if the master server has already been updated, please wait..."
+		SERVER_PKG=$(ssh -i "$KEY" $SSH_USERNAME@$SERVERNAME "/usr/sbin/so-apt-check 2>&1 | cut -d\; -f1")
+		if [ "$SERVER_PKG" -ne 0 ]; then
+			echo
+			echo "The master server reports that it has $SERVER_PKG update(s) available for installation."
+			echo "We highly recommend updating the master server before updating this sensor."
+			echo
+			echo "Recommendation: Press Ctrl-c now and then update your master server."
+			echo
+			echo "If you really want to continue updating this sensor (may cause issues), press Enter."
+			read input
+		fi	
+	fi
+fi
+
+# Remove old kernels
+echo "Checking for kernels that can be removed..."
+/usr/sbin/so-purge-old-kernels -y
+
+# Before running apt-get, we need to ensure that the docker repo config is in place
+if [ $DOCKER_SKIP -ne "1" ]; then
+        echo ""
+        if [ -f /etc/nsm/elasticdownload.conf ] && [ -f /opt/elastic/src/etc/apt/preferences.d/securityonion-docker ] && [ -f /etc/apt/sources.list ]; then
+	# check for missing /etc/apt/preferences.d/securityonion-docker and restore if necessary
+		FILE="/etc/apt/preferences.d/securityonion-docker"
+		if ! [ -f $FILE ]; then
+			echo "Copying $FILE into place"
+			cp /opt/elastic/src/etc/apt/preferences.d/securityonion-docker $FILE
+		fi
+
+	# check for commented out docker line in /etc/apt/sources.list
+		FILE="/etc/apt/sources.list"
+		if grep -q "^# deb \[arch=amd64\] https://download.docker.com/linux/ubuntu xenial stable" $FILE 2>/dev/null; then
+			echo "Re-enabling Docker repo in $FILE"
+			sed -i 's|^# deb \[arch=amd64\] https://download.docker.com/linux/ubuntu xenial stable.*$|deb [arch=amd64] https://download.docker.com/linux/ubuntu xenial stable|g' $FILE
+		fi
+	fi
+fi
+# soup: create /etc/apt/apt.conf.d/10periodic #1423
+# https://github.com/Security-Onion-Solutions/security-onion/issues/1423
+FILE="/etc/apt/apt.conf.d/10periodic"
+if ! [ -f ${FILE} ]; then
+	echo "Creating ${FILE} to configure apt for a daily package list update."
+	echo "This won't actually download or install any updates."
+	echo "It simply updates the list of available updates."
+	echo 'APT::Periodic::Update-Package-Lists "1";' >> ${FILE}
+fi
+
+# Sync with mirrors
+echo
+echo "Checking for updates..."
+apt-get update -qq
+
+# If new debconf package installs, it may reset our noninteractive setting.
+# This may result in things like wireshark prompting the user about dumpcap privs.
+# Re-apply the noninteractive setting so that soup can proceed unattended.
+echo "debconf debconf/frontend select noninteractive" | debconf-set-selections
+
+# If our docker config is present, check for updates for docker-ce and individual docker images
+if [ $DOCKER_SKIP -ne "1" ]; then
+	if [ -f /etc/nsm/elasticdownload.conf ] && [ -f /usr/sbin/so-elastic-stop ] && [ -f /usr/sbin/so-elastic-common ] && [ -x /usr/bin/docker ]; then
+		echo
+		# if a new version of docker-ce is available, stop containers, upgrade docker packages, and then set a flag to restart containers
+		if apt-get dist-upgrade --assume-no |grep docker-ce >/dev/null; then
+			echo $BANNER
+			echo "New docker-ce package available."
+			echo "Stopping Docker containers..."
+			/usr/sbin/so-elastic-stop > /dev/null 2>&1
+			echo "Installing Docker updates..."
+			apt-get $APT_OPTIONS install -y docker-ce docker-ce-cli containerd.io
+			echo "Starting Docker service..."
+			service docker start > /dev/null 2>&1
+			RESTART_CONTAINERS=yes
+		fi
+		# check if updates are available for Security Onion Docker images
+		echo "Checking Security Onion Docker image status..."
+		. /usr/sbin/so-elastic-common
+		for i in so-curator so-domainstats so-elastalert so-elasticsearch so-freqserver so-kibana so-logstash; do
+			OUTPUT=`/usr/bin/docker pull --disable-content-trust=false $DOCKERHUB/$i`
+			if echo $OUTPUT | grep -q "up to date"; then
+				echo "$i image is up to date."
+			elif echo $OUTPUT | grep -q "Downloaded newer image for "; then
+				echo "$i has been updated."
+				RESTART_CONTAINERS=yes
+			else
+				echo "Error checking for $i update."
+			fi
+		done
+		if [ "$RESTART_CONTAINERS" == "yes" ]; then
+			echo "Stopping Docker containers..."
+			/usr/sbin/so-elastic-stop > /dev/null 2>&1
+		fi
+		echo
+	fi
+fi
+# if mysql-server updates are available, we need to stop services and force reboot at end
+if apt-get dist-upgrade --assume-no |grep mysql-server >/dev/null; then
+	echo $BANNER
+	echo -n "New mysql-server packages available. Stopping services for clean update."
+	so-sguild-stop > /dev/null 2>&1
+	so-sensor-stop > /dev/null 2>&1
+	echo -n "."
+	service syslog-ng stop > /dev/null 2>&1
+	echo -n "."
+	service apache2 stop > /dev/null 2>&1
+	echo -n "."
+	#pkill autossh > /dev/null 2>&1
+	echo -n "."
+	pkill perl > /dev/null 2>&1
+	echo "done."
+	echo $BANNER
+	# Check to see if mysql is disabled
+	MYSQL_DISABLED="no"
+	systemctl is-enabled --quiet mysql.service || MYSQL_DISABLED="yes"
+	# Enable mysql so that upgrade will succeed
+	systemctl enable mysql.service
+	# Upgrade
+	apt-get $APT_OPTIONS install -y mysql-server mysql-server-core-5.7 mysql-server-5.7
+	# If previously disabled, then stop and disable it now
+	if [ ${MYSQL_DISABLED} == "yes" ]; then
+		systemctl stop mysql.service
+		systemctl disable mysql.service
+	fi
+	REBOOT=yes
+fi
+
+# Force pfring-module to install before any kernel updates
+apt-get $APT_OPTIONS install -y securityonion-pfring-module | while read; do 
+	echo "$REPLY" | grep -v "^Use 'apt-get autoremove' to remove them.$"
+done
+
+# 16.04.4.1 installations are missing HWE metapackages
+# so if a 4.13 kernel is installed, try to install the HWE metapackages
+if dpkg -l |grep "linux-headers-4.13" >/dev/null 2>&1; then
+
+	# If update-grub-legacy-ec2 is installed and /boot/grub/menu.lst is missing, avoid prompting user later
+	if [ -x /usr/sbin/update-grub-legacy-ec2 ]; then
+		if ! [ -f /boot/grub/menu.lst ]; then
+			/usr/sbin/update-grub-legacy-ec2 -y
+		fi
+	fi
+
+	# Don't install xserver if it wasn't already installed
+	XSERVER=""
+	if dpkg -l |grep xserver >/dev/null 2>&1; then
+		XSERVER="xserver-xorg-hwe-16.04"
+	fi
+
+	# Try to install kernel HWE package and (optionally) XSERVER HWE package
+	apt-get -y install --install-recommends linux-generic-hwe-16.04 $XSERVER
+fi
+
+# so-desktop-gnome previously didn't install gnome-screensaver
+if [ -f /usr/sbin/so-desktop-gnome ]; then
+	# If so-desktop-gnome has been executed, then it should have installed lightdm
+	if dpkg -l |grep -q "lightdm" ; then
+		# If so-desktop-gnome has been executed, then it should have removed gdm3
+		if ! dpkg -l |grep -q "gdm3" ; then
+			# If gnome-screensaver is not installed, install it
+			if ! dpkg -l |grep -q "gnome-screensaver" ; then
+				apt -y install gnome-screensaver
+			fi
+		fi
+	fi
+fi
+
+# Get list of updates
+UPDATES=`apt-get dist-upgrade --assume-no`
+
+# Is there a snort update available?
+echo $UPDATES | grep securityonion-snort >/dev/null && SNORT=yes
+
+# Is there a Suricata update available?
+echo $UPDATES | grep securityonion-suricata >/dev/null && SURICATA=yes
+
+# Is there a Bro update available?
+echo $UPDATES | grep securityonion-bro >/dev/null && BRO=yes
+
+# Is there a Wazuh update available?
+echo $UPDATES | grep ossec-hids-server >/dev/null && WAZUH=yes
+
+# If there is a kernel update available, we need to reboot at the end
+echo $UPDATES | grep -A1000 "The following NEW packages will be installed:" | grep -B1000 "The following packages will be upgraded:" | grep linux-image >/dev/null && REBOOT=yes
+
+# Do the actual upgrade
+apt-get $APT_OPTIONS -y dist-upgrade | while read; do 
+	echo "$REPLY" | grep -v "^Use 'apt-get autoremove' to remove them.$"
+done
+
+# Check again if the system requires a reboot
+test -e /var/run/reboot-required && REBOOT=yes
+
+# Final output
+echo $BANNER
+echo "All updates have been installed."
+
+# Do we need to restart Docker containers?
+if [ "$RESTART_CONTAINERS" == "yes" ]; then
+	echo "Restarting Docker containers..."
+	/usr/sbin/so-elastic-start > /dev/null 2>&1
+fi
+
+# Remove old Docker images
+if [ -f /etc/nsm/elasticdownload.conf ] && [ -x /usr/bin/docker ] ; then
+	if /usr/bin/docker images | grep "${DOCKERHUB}/so-" | grep -v latest; then
+        	echo
+	        echo "Removing old Security Onion Docker images..."
+        	echo
+	        for i in $( /usr/bin/docker images | grep "${DOCKERHUB}/so-" | grep -v latest | awk '{print $3}'); do
+        	        echo "Removing ${i} ..."
+                	/usr/bin/docker rmi ${i} -f
+	        done
+        	echo
+	        echo "Old Security Onion Docker images have been removed."
+	fi
+fi
+
+# If sniffing interfaces, then output notifications about any sniffing process updates
+if [ -f /etc/nsm/sensortab ] && [ $(grep -v "^#" /etc/nsm/sensortab | wc -l) -gt 0 ]; then
+	# If Snort updated, remind user to review snort.conf
+	if [ $SNORT == "yes" ]; then
+		echo
+		echo "Snort has been updated.  Please review your snort.conf file(s) and manually re-apply any local customizations.  You may also need to run rule-update to update your NIDS rules."
+	fi
+
+	# If Suricata updated, remind user to review suricata.yaml
+	if [ $SURICATA == "yes" ]; then
+		echo
+		echo "Suricata has been updated.  Please review your suricata.yaml file(s) and manually re-apply any local customizations.  You may also need to run rule-update to update your NIDS rules."
+	fi
+
+	# If Bro updated, remind user to review Bro config
+	if [ $BRO == "yes" ]; then
+		echo
+		echo "Bro has been updated.  Please review your Bro configuration and manually re-apply any local customizations."
+	fi
+fi
+
+# If Wazuh update, remind user to review Wazuh config
+if [ $WAZUH == "yes" ]; then
+	echo
+	echo "Wazuh has been updated. Please review your Wazuh configuration at /var/ossec/etc/ossec.conf and manually re-apply any local customizations."
+
+	# If user had previously deployed agents, remind them to update to latest Wazuh agent
+	WAZUH_KEYS=/var/ossec/etc/client.keys
+	if [ -s $WAZUH_KEYS ]; then
+		WAZUH_VERSION=$(dpkg -l |grep ossec-hids-server | awk '{print $3}' | cut -d. -f1,2,3)
+		echo "Also, please make sure the following agents have been updated to Wazuh $WAZUH_VERSION:"
+		awk '{print $1,$2,$3}' $WAZUH_KEYS
+	fi
+fi
+ 
+# Emergency check for docker issue
+if dpkg -l |grep docker |grep -q "5:19.03.3~3-0~ubuntu-xenial"; then
+	echo
+	echo "Docker 19.03.3 detected! This version has issues:"
+	echo "https://blog.securityonion.net/2019/10/docker-package-issues-please-do-not.html"
+	echo
+	echo "We've blocked this version in /etc/apt/preferences.d/securityonion-docker-block."
+	echo
+	echo "We recommend removing the docker-ce and docker-ce-cli packages and re-installing:"
+	echo "sudo apt purge docker-ce docker-ce-cli && sudo apt install docker-ce docker-ce-cli"
+fi
+
+echo
+echo "If this is a distributed deployment, please update the remaining boxes in your deployment to ensure all boxes are running the same updates."
+
+# If we need to reboot, give the user a chance to cancel.
+if [ $REBOOT == "yes" ]; then
+	if [ $SKIP -ne 1 ]; then
+		echo
+		echo "Press Enter to reboot or Ctrl-C to cancel."
+		read input
+	fi
+	reboot
+fi

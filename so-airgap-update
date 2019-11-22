@@ -1,0 +1,219 @@
+#!/bin/bash -i
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+#
+
+# Purpose: This script will allow you to update offline/airgap Security Onion machines
+# Last Modified: 11/21/2019
+
+# Need elevated privilages to write blacklist/whitelist files to /etc/elastalert/rules directory.
+
+if [[ $(/usr/bin/id -u) -ne 0 ]]; then
+        echo "This script needs to be run as root.  Please try again using sudo."
+        exit
+fi
+
+################################
+#   Dialog box color scheme    #
+#s###############################
+
+export NEWT_COLORS='
+window=gray	
+border=white,brightred
+textbox=white
+button=white,red		
+'
+
+########################
+#  Node Type Function  #
+########################
+NODE_FUNCTION()
+{
+if [ $NODE_TYPE = "Gateway" ] ; then
+    gateway_function
+elif [ $NODE_TYPE = "Master" ] ; then
+    master_function
+else
+    sensor_function
+fi
+}
+########################
+#   Gateway Funtion    #
+########################
+gateway_function()
+{
+if (whiptail --yesno "\nYou have selected the Gateway node. It MUST be connected to the internet in order to download the latest Docker images and Operating System patches.\n\nThis will be done in Two Steps.\n\nStep 1. Install An Apt-cacher-ng docker container and save all OS patches.\n\nStep 2.  Update and save the docker images.\n\nDo you wish to continue?" 15 90 --title "Gateway Node") then
+    GATEWAY_STEP=$(whiptail --title "Gateway Step Select" --radiolist \
+    "\nPlease choose from the options below:\n\n" 20 90 6 \
+    "Step_1" "Initial OS update with apt-cacher-ng          " ON \
+    "Step_2" "Docker Image update and save      " OFF 3>&1 1>&2 2>&3)
+    exitstatus=$?
+    if [ $exitstatus = 0 ] ; then
+        if [ $GATEWAY_STEP = "Step_1" ] ; then
+            gateway_function_step_one
+        else
+            gateway_function_step_two    
+        fi
+    else
+        mainmenu
+    fi
+fi
+}
+gateway_function_step_one()
+{
+ #   echo ""
+ #   echo -e "\e[32mDownloading the latest version of so-airgap-update.\e[0m"
+ #   git clone https://github.com/bryant-treacle/securityonion-airgap.git
+    CURRENT_DIRECTORY=$(pwd)
+    echo "" 
+    echo -e "\e[32mBuilding Apt-cacher-ng Docker Container.\e[0m"
+    echo ""
+    docker build -f etc/acng/Dockerfile -t securityonionsolutions/acng .
+    mkdir -p /opt/airgap/acng/apt-cacher-ng-vol/
+    echo ""
+    echo -e "\e[32mStarting so-acng docker container.\e[0m"
+    docker run   --restart always   --detach  --volume /opt/airgap/acng/apt-cacher-ng-vol:/var/cache/apt-cacher-ng:rw --publish 127.0.0.1:3142:3142   --name so-acng securityonionsolutions/acng
+    echo ""
+    echo -e "\e[32mAdding proxy config for apt.\e[0m"
+    echo ""
+    sh -c '(echo "Acquire::http::Proxy \"http://localhost:3142\";") > /etc/apt/apt.conf.d/00proxy'
+    echo ""
+    echo -e "\e[32mUpdated the Gateway. This may take a while.\e[0m"
+    echo ""
+    soup
+}
+gateway_function_step_two()
+{
+    # Copy over Docker scripts and make them executable
+    cp -av registry/so-docker* /usr/sbin && chmod +x /usr/sbin/so-docker-*
+    echo ""
+    echo -e "\e[32mStopping so-acng docker containers.\e[0m"
+    echo ""
+    docker stop so-acng
+    # Updating All Docker Container
+    /usr/sbin/so-docker-pull -r
+    # Save Docker images
+    /usr/sbin/so-docker-save -p /opt/airgap/save
+    tar -zcvf update_packages.tar.gz /opt/airgap/acng/
+    echo ""
+    echo -e "\e[32mPlease copy the contents of the securityonion-airgap folder and /opt/airgap/save folder to airgap network and run so-airgap-update on the master.\e[0m" 
+    echo ""
+
+}
+
+########################
+#    Master Funtion    #
+########################
+master_function()
+{
+if (whiptail --yesno "\nYou have selected the Master node.\n\nPrior to choosing this option you need to run this script on a Gatway node connected to the internet.\n\nDo you wish to continue?" 15 90 --title "Master Node") then
+    # Get the location of the saved Docker images
+    IMAGEDIR=$(whiptail --inputbox "\nPlease enter the FULL file path where you saved the docker containers.\n\nExample. /home/analyst/save" 15 65 --title "Saved Docker Images" 3>&1 1>&2 2>&3) 
+    exitstatus=$?
+
+        if [ $exitstatus = 0 ] ; then
+            ACNGDIR=$(whiptail --inputbox "\nPlease enter the FULL file path where you saved securityonion-airgap folder.\n\nExample. /home/analyst/securityonion-airgap" 15 65 --title "Apt-cacher-ng Volume" 3>&1 1>&2 2>&3)
+            exitstatus=$?
+                 if [ $exitstatus = 0 ] ; then
+                     cp -av registry/so-registry* /usr/sbin && chmod +x /usr/sbin/so-registry*
+                     cp registry/so-docker-load /usr/sbin/so-docker-load && chmod +x /usr/sbin/so-docker-load
+                     cp etc/securityonion-ag.conf /etc/nsm/securityonion-ag.conf
+                     cp registry/soup /usr/sbin/ && chmod +x /usr/sbin/soup
+                     # Make a directory to mount to acng docker container
+                     mkdir -p /opt/airgap/
+                     # un-tar acng volume
+                     tar -zxvf update_packages.tar.gz && mv opt/airgap/acng /opt/airgap && rm -rf opt/* 
+                     mv $IMAGEDIR /opt/airgap/                
+                     /usr/sbin/so-registry-configure -y -n 
+                     echo ""
+                     echo -e "\e[32mStarting so-acng docker container!\e[0m"
+                     echo ""  
+                     docker run   --restart always   --detach  --volume /opt/airgap/acng/apt-cacher-ng-vol:/var/cache/apt-cacher-ng:rw --publish 127.0.0.1:3142:3142   --name so-acng securityonionsolutions/acng
+                     # Changing so-acng to offline mode
+		             docker exec -it so-acng bash -c "sed -i -e 's/# Offlinemode: 0/Offlinemode: 1/g' /etc/apt-cacher-ng/acng.conf"
+                     echo ""
+                     echo -e "\e[32mReloading so-acng docker container.\e[0m"
+                     echo ""
+                     docker stop so-acng
+                     docker start so-acng 
+                     echo ""
+                     echo -e "\e[32mConfiguring Host to pull updates from so-acng.\e[0m"
+                     echo ""
+                     sh -c '(echo "Acquire::http::Proxy \"http://localhost:3142\";") > /etc/apt/apt.conf.d/00proxy'
+                     echo ""
+                     echo -e "\e[32mConfiguration complete!!\e[0m"
+                     echo ""
+                     echo -e "\e[32mPlease run sudo soup -d to update the server.\e[0m"
+                     echo ""
+                 else
+                     mainmenu
+                 fi
+        else
+            mainmenu
+        fi
+ 
+fi
+}
+
+######################
+# Sensor Function #
+######################
+sensor_function()
+if (whiptail --yesno "\nYou have selected the Sensor option.\n\nPrior to choosing this option you need to run this script on the Master node.\n\nThis option will is used for the follow node types:\n - Heavy\n - Storage\n - Forward\n\nDo you wish to continue?" 15 90 --title "Sensor Node") then
+	if [ $exitstatus = 0 ] ; then
+        cp -av registry/so-registry* /usr/sbin && chmod +x /usr/sbin/so-registry*
+        cp registry/so-docker-load /usr/sbin/so-docker-load && chmod +x /usr/sbin/so-docker-load
+        cp etc/securityonion-ag.conf /etc/nsm/securityonion-ag.conf
+        cp registry/soup /usr/sbin/ && chmod +x /usr/sbin/soup
+        echo ""
+	    echo -e "\e[32mPulling Updated Docker Images from Master Server\e[0m"
+        echo ""
+        so-registry-configure 
+        echo ""
+        echo -e "\e[32mConfiguring Host to pull updates from so-acng.\e[0m"
+        echo ""
+        sh -c '(echo "Acquire::http::Proxy \"http://localhost:3142\";") > /etc/apt/apt.conf.d/00proxy'
+        echo ""
+        echo -e "\e[32mConfiguration complete!!\e[0m"
+        echo ""
+	    echo -e "\e[32mPlease run soup -d to update the Operation System\e[0m"
+        echo ""
+        echo 
+    else
+	    mainmenu
+	fi
+fi
+######################
+# Main Menu Function #
+######################
+mainmenu() 
+{
+NODE_TYPE=$(whiptail --title "Main Menu" --radiolist \
+    "\nPlease choose from the options below:\n\n" 20 90 6 \
+    "Gateway" "Requires Internet Connectivity.          " ON \
+    "Master" "For Master Sensor Only.            " OFF \
+    "Sensor" "For Heavy, Storage and Forward Nodes.      " OFF 3>&1 1>&2 2>&3)
+    exitstatus=$?
+	if [ $exitstatus = 0 ] ; then
+	    NODE_FUNCTION
+	else
+	    exit
+	fi
+}
+
+
+#####################
+# Launch the Script #
+#####################
+mainmenu
