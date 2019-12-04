@@ -89,7 +89,7 @@ gateway_function_step_one()
     echo ""
     sh -c '(echo "Acquire::http::Proxy \"http://localhost:3142\";") > /etc/apt/apt.conf.d/00proxy'
     echo ""
-    echo -e "\e[32mUpdated the Gateway. This may take a while.\e[0m"
+    echo -e "\e[32mUpdated the Gateway Node. This may take a while.\e[0m"
     echo ""
     soup
 }
@@ -105,7 +105,10 @@ gateway_function_step_two()
     /usr/sbin/so-docker-pull -r
     # Save Docker images
     /usr/sbin/so-docker-save -p /opt/airgap/save
-    tar -zcvf update_packages.tar.gz /opt/airgap/acng/
+    echo ""
+    echo -e "\e[32mCompressing so-acng docker volume.  This may take a while.\e[0m" 
+    echo ""
+    tar -zcvf update_packages.tar.gz /opt/airgap/acng/ > /dev/null 2>&1
     echo ""
     echo -e "\e[32mPlease copy the contents of the securityonion-airgap folder and /opt/airgap/save folder to airgap network and run so-airgap-update on the master.\e[0m" 
     echo ""
@@ -117,7 +120,7 @@ gateway_function_step_two()
 ########################
 master_function()
 {
-if (whiptail --yesno "\nYou have selected the Master node.\n\nPrior to choosing this option you need to run this script on a Gatway node connected to the internet.\n\nDo you wish to continue?" 15 90 --title "Master Node") then
+if (whiptail --yesno "\nYou have selected the Master node.\n\nPrior to choosing this option you need to run this script on a Gatway Node connected to the internet.\n\nDo you wish to continue?" 15 90 --title "Master Node") then
     # Get the location of the saved Docker images
     IMAGEDIR=$(whiptail --inputbox "\nPlease enter the FULL file path where you saved the docker containers.\n\nExample. /home/analyst/save" 15 65 --title "Saved Docker Images" 3>&1 1>&2 2>&3) 
     exitstatus=$?
@@ -156,7 +159,10 @@ if (whiptail --yesno "\nYou have selected the Master node.\n\nPrior to choosing 
                     # Make a directory to mount to acng docker container
                     mkdir -p /opt/airgap/
                     # un-tar acng volume
-                    tar -zxvf update_packages.tar.gz && mv opt/airgap/acng /opt/airgap && rm -rf opt/* 
+                    echo ""
+                    echo -e "\e[32mDecompressing so-acng docker volume.  This may take a while.\e[0m" 
+                    echo ""
+                    tar -zxvf update_packages.tar.gz > /dev/null 2>&1 && mv opt/airgap/acng /opt/airgap && rm -rf opt/* 
                     mv $IMAGEDIR /opt/airgap/                
                     /usr/sbin/so-registry-configure -y -n 
                     echo ""
@@ -193,14 +199,14 @@ fi
 # Sensor Function #
 ######################
 sensor_function()
-if (whiptail --yesno "\nYou have selected the Sensor option.\n\nPrior to choosing this option you need to run this script on the Master node.\n\nThis option will is used for the follow node types:\n - Heavy\n - Storage\n - Forward\n\nDo you wish to continue?" 15 90 --title "Sensor Node") then
+if (whiptail --yesno "\nYou have selected the Sensor option.\n\nPrior to choosing this option you need to run this script on the Master Node.\n\nThis option will is used for the follow Node types:\n - Heavy\n - Storage\n - Forward\n\nDo you wish to continue?" 15 90 --title "Sensor Node") then
 	if [ $exitstatus = 0 ] ; then
         cp -av registry/so-registry* /usr/sbin && chmod +x /usr/sbin/so-registry*
         cp registry/so-docker-load /usr/sbin/so-docker-load && chmod +x /usr/sbin/so-docker-load
         cp etc/securityonion-ag.conf /etc/nsm/securityonion-ag.conf
         cp registry/soup /usr/sbin/ && chmod +x /usr/sbin/soup
         echo ""
-	    echo -e "\e[32mPulling Updated Docker Images from Master Server\e[0m"
+	    echo -e "\e[32mPulling Updated Docker Images from Master Node\e[0m"
         echo ""
         so-registry-configure 
         echo ""
@@ -225,7 +231,7 @@ mainmenu()
 NODE_TYPE=$(whiptail --title "Main Menu" --radiolist \
     "\nPlease choose from the options below:\n\n" 20 90 6 \
     "Gateway" "Requires Internet Connectivity.          " ON \
-    "Master" "For Master Sensor Only.            " OFF \
+    "Master" "For Master Node Only.            " OFF \
     "Sensor" "For Heavy, Storage and Forward Nodes.      " OFF 3>&1 1>&2 2>&3)
     exitstatus=$?
 	if [ $exitstatus = 0 ] ; then
