@@ -137,38 +137,49 @@ if (whiptail --yesno "\nYou have selected the Master node.\n\nPrior to choosing 
             ACNGDIR=$(whiptail --inputbox "\nPlease enter the FULL file path where you saved securityonion-airgap folder.\n\nExample. /home/analyst/securityonion-airgap" 15 65 --title "Apt-cacher-ng Volume" 3>&1 1>&2 2>&3)
             exitstatus=$?
                  if [ $exitstatus = 0 ] ; then
-                     cp -av registry/so-registry* /usr/sbin && chmod +x /usr/sbin/so-registry*
-                     cp registry/so-docker-load /usr/sbin/so-docker-load && chmod +x /usr/sbin/so-docker-load
-                     cp etc/securityonion-ag.conf /etc/nsm/securityonion-ag.conf
-                     cp registry/soup /usr/sbin/ && chmod +x /usr/sbin/soup
-                     # Make a directory to mount to acng docker container
-                     mkdir -p /opt/airgap/
-                     # un-tar acng volume
-                     tar -zxvf update_packages.tar.gz && mv opt/airgap/acng /opt/airgap && rm -rf opt/* 
-                     mv $IMAGEDIR /opt/airgap/                
-                     /usr/sbin/so-registry-configure -y -n 
-                     echo ""
-                     echo -e "\e[32mStarting so-acng docker container!\e[0m"
-                     echo ""  
-                     docker run   --restart always   --detach  --volume /opt/airgap/acng/apt-cacher-ng-vol:/var/cache/apt-cacher-ng:rw --publish 127.0.0.1:3142:3142   --name so-acng securityonionsolutions/acng
-                     # Changing so-acng to offline mode
-		             docker exec -it so-acng bash -c "sed -i -e 's/# Offlinemode: 0/Offlinemode: 1/g' /etc/apt-cacher-ng/acng.conf"
-                     echo ""
-                     echo -e "\e[32mReloading so-acng docker container.\e[0m"
-                     echo ""
-                     docker stop so-acng
-                     docker start so-acng 
-                     echo ""
-                     echo -e "\e[32mConfiguring Host to pull updates from so-acng.\e[0m"
-                     echo ""
-                     sh -c '(echo "Acquire::http::Proxy \"http://localhost:3142\";") > /etc/apt/apt.conf.d/00proxy'
-                     echo ""
-                     echo -e "\e[32mConfiguration complete!!\e[0m"
-                     echo ""
-                     echo -e "\e[32mPlease run sudo soup -d to update the server.\e[0m"
-                     echo ""
+                    # Verify folder exists
+                    if [ ! -d "$ACNGDIR" ]; then
+                        ACNGDIR=$(whiptail --inputbox "\nI was unable to find the folder $ACNGDIR. Please enter the FULL file path where you saved securityonion-airgap folder.\n\nExample. /home/analyst/securityonion-airgap" 15 65 --title "Saved Docker Images" 3>&1 1>&2 2>&3) 
+                        exitstatus=$?
+                        if [ $exitstatus = 0 ] ; then
+                            # Verify folder exists a second time if not exit
+                            if [ ! -d "$ACNGDIR" ]; then
+                                NO_DIR_FOUND=$(whiptail --msgbox "Please Verify $ACNGDIR exists and has appropriate permissions then run this script again!" 8 65 --title "Folder Path" 3>&1 1>&2 2>&3)
+                                exit
+                            fi
+                        fi 
+                    cp -av registry/so-registry* /usr/sbin && chmod +x /usr/sbin/so-registry*
+                    cp registry/so-docker-load /usr/sbin/so-docker-load && chmod +x /usr/sbin/so-docker-load
+                    cp etc/securityonion-ag.conf /etc/nsm/securityonion-ag.conf
+                    cp registry/soup /usr/sbin/ && chmod +x /usr/sbin/soup
+                    # Make a directory to mount to acng docker container
+                    mkdir -p /opt/airgap/
+                    # un-tar acng volume
+                    tar -zxvf update_packages.tar.gz && mv opt/airgap/acng /opt/airgap && rm -rf opt/* 
+                    mv $IMAGEDIR /opt/airgap/                
+                    /usr/sbin/so-registry-configure -y -n 
+                    echo ""
+                    echo -e "\e[32mStarting so-acng docker container!\e[0m"
+                    echo ""  
+                    docker run   --restart always   --detach  --volume /opt/airgap/acng/apt-cacher-ng-vol:/var/cache/apt-cacher-ng:rw --publish 127.0.0.1:3142:3142   --name so-acng securityonionsolutions/acng
+                    # Changing so-acng to offline mode
+		            docker exec -it so-acng bash -c "sed -i -e 's/# Offlinemode: 0/Offlinemode: 1/g' /etc/apt-cacher-ng/acng.conf"
+                    echo ""
+                    echo -e "\e[32mReloading so-acng docker container.\e[0m"
+                    echo ""
+                    docker stop so-acng
+                    docker start so-acng 
+                    echo ""
+                    echo -e "\e[32mConfiguring Host to pull updates from so-acng.\e[0m"
+                    echo ""
+                    sh -c '(echo "Acquire::http::Proxy \"http://localhost:3142\";") > /etc/apt/apt.conf.d/00proxy'
+                    echo ""
+                    echo -e "\e[32mConfiguration complete!!\e[0m"
+                    echo ""
+                    echo -e "\e[32mPlease run sudo soup -d -a to update the server.\e[0m"
+                    echo ""
                  else
-                     mainmenu
+                    mainmenu
                  fi
         else
             mainmenu
@@ -198,7 +209,7 @@ if (whiptail --yesno "\nYou have selected the Sensor option.\n\nPrior to choosin
         echo ""
         echo -e "\e[32mConfiguration complete!!\e[0m"
         echo ""
-	    echo -e "\e[32mPlease run soup -d to update the Operation System\e[0m"
+	    echo -e "\e[32mPlease run soup -d -a to update the Operation System\e[0m"
         echo ""
         echo 
     else
