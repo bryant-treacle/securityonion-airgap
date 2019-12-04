@@ -121,8 +121,19 @@ if (whiptail --yesno "\nYou have selected the Master node.\n\nPrior to choosing 
     # Get the location of the saved Docker images
     IMAGEDIR=$(whiptail --inputbox "\nPlease enter the FULL file path where you saved the docker containers.\n\nExample. /home/analyst/save" 15 65 --title "Saved Docker Images" 3>&1 1>&2 2>&3) 
     exitstatus=$?
-
         if [ $exitstatus = 0 ] ; then
+            # Verify folder exists
+            if [ ! -d "$IMAGEDIR" ]; then
+                IMAGEDIR=$(whiptail --inputbox "\nI was unable to find the folder $IMAGEDIR. Please enter the FULL file path where you saved the docker containers.\n\nExample. /home/analyst/save" 15 65 --title "Saved Docker Images" 3>&1 1>&2 2>&3) 
+                exitstatus=$?
+                if [ $exitstatus = 0 ] ; then
+                # Verify folder exists a second time if not exit
+                    if [ ! -d "$IMAGEDIR" ]; then
+                        NO_DIR_FOUND=$(whiptail --msgbox "Please Verify $IMAGEDIR exists and has appropriate permissions then run this script again!" 8 65 --title "Folder Path" 3>&1 1>&2 2>&3)
+                        exit
+                    fi
+                fi                        
+            fi
             ACNGDIR=$(whiptail --inputbox "\nPlease enter the FULL file path where you saved securityonion-airgap folder.\n\nExample. /home/analyst/securityonion-airgap" 15 65 --title "Apt-cacher-ng Volume" 3>&1 1>&2 2>&3)
             exitstatus=$?
                  if [ $exitstatus = 0 ] ; then
