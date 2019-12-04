@@ -80,18 +80,25 @@ cat <<EOF
 Security Onion Update
 
      Options:
+	-a	Skip killing autossh process (for Airgap Networks)
+	-d	Skip Docker update (for Airgap Networks)
+    -h  This message
+	-l  <file> 	Log stdout and stderr to specified file (Use with \`\`-y'')
+	-y	Skip interactive mode
 
-    -h      	This message
-	-l <file> 	Log stdout and stderr to specified file (Use with \`\`-y'')
-	-y		Skip interactive mode
-    -d		Skip Docker update (for Airgap Networks)
 Usage: $0
 EOF
 }
 
-while getopts "hl:y:d" OPTION
+while getopts "hl:y:d:a" OPTION
 do
 	case $OPTION in
+ 	a)
+	    AUTOSSH_PKILL_SKIP=1
+		;;	
+	d)
+		DOCKER_SKIP=1
+		;;
 	h)
 		usage
 		exit 0
@@ -104,12 +111,8 @@ do
 		SKIP=1
 		APT_OPTIONS="-o DPkg::options::=--force-confdef -o DPkg::options::=--force-confnew"
 		;;
-    d)
-                DOCKER_SKIP=1
-		;;
 	esac
 done
-echo "$DOCKER_SKIP"
 if [ $LOG -eq 1 ]; then
 #	exec > >(tee "$LOGFILE") 2>&1
 	echo -e "\n --> Logging stdout & stderr to $LOGFILE"
@@ -264,7 +267,9 @@ if apt-get dist-upgrade --assume-no |grep mysql-server >/dev/null; then
 	echo -n "."
 	service apache2 stop > /dev/null 2>&1
 	echo -n "."
-	#pkill autossh > /dev/null 2>&1
+	if [ $AUTOSSH_PKILL_SKIP -ne "1" ]; then
+		pkill autossh > /dev/null 2>&1
+	fi
 	echo -n "."
 	pkill perl > /dev/null 2>&1
 	echo "done."
