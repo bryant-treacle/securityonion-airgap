@@ -36,4 +36,11 @@ Updating the Gateway Node is a two step process.  Step one will install apt-cach
 
 ## Updating the Master Node
 
+## Updating the Sensor Node
+After you have updated the Master Node on the airgap network.  Copy the securityonion-airgap folder to the Storage Nodes, Heavy Nodes and Forward Nodes on the airgap network.
+
+1. Navigate to the securityonion-airgap directory.
+2. Launch so-airgap-update script
+    
+      `sudo ./so-arigap-update`
 
