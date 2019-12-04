@@ -148,6 +148,7 @@ if (whiptail --yesno "\nYou have selected the Master node.\n\nPrior to choosing 
                                 exit
                             fi
                         fi 
+                    fi
                     cp -av registry/so-registry* /usr/sbin && chmod +x /usr/sbin/so-registry*
                     cp registry/so-docker-load /usr/sbin/so-docker-load && chmod +x /usr/sbin/so-docker-load
                     cp etc/securityonion-ag.conf /etc/nsm/securityonion-ag.conf
