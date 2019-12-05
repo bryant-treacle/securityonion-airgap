@@ -49,7 +49,7 @@ Do not start this step until you have updated the Gateway Node and transferred t
 4. You will be prompted to enter the file location where you saved the securityonion-airgap folder and the /opt/airgap/save folder
 5. Follow the prompts and run Soup with the following switches: 
 
-      `sudo ./so-airgap-update`
+      `sudo soup -a -d`
       
 6. After Soup has finished Reboot the Node      
 
