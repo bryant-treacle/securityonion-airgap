@@ -80,7 +80,6 @@ cat <<EOF
 Security Onion Update
 
      Options:
-	-a	Skip killing autossh process (for Airgap Networks)
 	-d	Skip Docker update (for Airgap Networks)
     -h  This message
 	-l  <file> 	Log stdout and stderr to specified file (Use with \`\`-y'')
@@ -90,12 +89,9 @@ Usage: $0
 EOF
 }
 
-while getopts ":adhly" OPTION
+while getopts ":dhly" OPTION
 do
 	case $OPTION in
- 	a)
-	    AUTOSSH_PKILL_SKIP=1
-		;;	
 	d)
 		DOCKER_SKIP=1
 		;;
@@ -267,9 +263,7 @@ if apt-get dist-upgrade --assume-no |grep mysql-server >/dev/null; then
 	echo -n "."
 	service apache2 stop > /dev/null 2>&1
 	echo -n "."
-	if [ $AUTOSSH_PKILL_SKIP -ne "1" ]; then
-		pkill autossh > /dev/null 2>&1
-	fi
+	pkill autossh > /dev/null 2>&1
 	echo -n "."
 	pkill perl > /dev/null 2>&1
 	echo "done."
