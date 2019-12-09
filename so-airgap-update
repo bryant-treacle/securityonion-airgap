@@ -81,9 +81,13 @@ gateway_function_step_one()
     echo ""
     docker build -f etc/acng/Dockerfile -t securityonionsolutions/acng .
     mkdir -p /opt/airgap/acng/apt-cacher-ng-vol/
+    mkdir -p /etc/apt-cacher-ng/
+    cp -av etc/acng.conf /etc/apt-cacher-ng/
+    cp -av registry/so-acng-* /usr/sbin && chmod +x /usr/sbin/so-acng-*
     echo ""
     echo -e "\e[32mStarting so-acng docker container.\e[0m"
-    docker run   --restart always   --detach  --volume /opt/airgap/acng/apt-cacher-ng-vol:/var/cache/apt-cacher-ng:rw --publish 127.0.0.1:3142:3142   --name so-acng securityonionsolutions/acng
+    #docker run   --restart always   --detach  --volume /opt/airgap/acng/apt-cacher-ng-vol:/var/cache/apt-cacher-ng:rw --publish 127.0.0.1:3142:3142   --name so-acng securityonionsolutions/acng
+    so-acng-start
     echo ""
     echo -e "\e[32mAdding proxy config for apt.\e[0m"
     echo ""
@@ -152,12 +156,15 @@ if (whiptail --yesno "\nYou have selected the Master node.\n\nPrior to choosing 
                             fi
                         fi 
                     fi
+                    # Make a directory to mount to acng docker container
+                    mkdir -p /opt/airgap/
+                    mkdir -p /etc/apt-cacher-ng/
                     cp -av registry/so-registry* /usr/sbin && chmod +x /usr/sbin/so-registry*
                     cp registry/so-docker-load /usr/sbin/so-docker-load && chmod +x /usr/sbin/so-docker-load
                     cp etc/securityonion-ag.conf /etc/nsm/securityonion-ag.conf
+                    cp av etc/acng.conf /etc/apt-cacher-ng/
+                    cp -av registry/so-acng-* /usr/sbin && chmod +x /usr/sbin/so-acng-*
                     cp registry/soup /usr/sbin/ && chmod +x /usr/sbin/soup
-                    # Make a directory to mount to acng docker container
-                    mkdir -p /opt/airgap/
                     # un-tar acng volume
                     echo ""
                     echo -e "\e[32mDecompressing so-acng docker volume.  This may take a while.\e[0m" 
@@ -165,17 +172,18 @@ if (whiptail --yesno "\nYou have selected the Master node.\n\nPrior to choosing 
                     tar -zxvf update_packages.tar.gz > /dev/null 2>&1 && mv opt/airgap/acng /opt/airgap && rm -rf opt/* 
                     mv $IMAGEDIR /opt/airgap/                
                     /usr/sbin/so-registry-configure -y -n 
+                    # Changing so-acng to offline mode
+		            sed -i -e 's/# Offlinemode: 0/Offlinemode: 1/g' /etc/apt-cacher-ng/acng.conf
                     echo ""
                     echo -e "\e[32mStarting so-acng docker container!\e[0m"
-                    echo ""  
-                    docker run   --restart always   --detach  --volume /opt/airgap/acng/apt-cacher-ng-vol:/var/cache/apt-cacher-ng:rw --publish 127.0.0.1:3142:3142   --name so-acng securityonionsolutions/acng
-                    # Changing so-acng to offline mode
-		            docker exec -it so-acng bash -c "sed -i -e 's/# Offlinemode: 0/Offlinemode: 1/g' /etc/apt-cacher-ng/acng.conf"
                     echo ""
-                    echo -e "\e[32mReloading so-acng docker container.\e[0m"
-                    echo ""
-                    docker stop so-acng
-                    docker start so-acng 
+ #                  docker run   --restart always   --detach  --volume /opt/airgap/acng/apt-cacher-ng-vol:/var/cache/apt-cacher-ng:rw --publish 127.0.0.1:3142:3142   --name so-acng securityonionsolutions/acng
+                    so-acng-start
+ #                  echo ""
+ #                  echo -e "\e[32mReloading so-acng docker container.\e[0m"
+ #                  echo ""
+ #                  docker stop so-acng
+ #                  docker start so-acng 
                     echo ""
                     echo -e "\e[32mConfiguring Host to pull updates from so-acng.\e[0m"
                     echo ""
@@ -183,7 +191,7 @@ if (whiptail --yesno "\nYou have selected the Master node.\n\nPrior to choosing 
                     echo ""
                     echo -e "\e[32mConfiguration complete!!\e[0m"
                     echo ""
-                    echo -e "\e[32mPlease run sudo soup -d -a to update the server.\e[0m"
+                    echo -e "\e[32mPlease run sudo soup -d to update the server.\e[0m"
                     echo ""
                  else
                     mainmenu
@@ -208,7 +216,7 @@ if (whiptail --yesno "\nYou have selected the Sensor option.\n\nPrior to choosin
         echo ""
 	    echo -e "\e[32mPulling Updated Docker Images from Master Node\e[0m"
         echo ""
-        so-registry-configure 
+        so-registry-configure -y -n
         echo ""
         echo -e "\e[32mConfiguring Host to pull updates from so-acng.\e[0m"
         echo ""
@@ -216,7 +224,7 @@ if (whiptail --yesno "\nYou have selected the Sensor option.\n\nPrior to choosin
         echo ""
         echo -e "\e[32mConfiguration complete!!\e[0m"
         echo ""
-	    echo -e "\e[32mPlease run soup -d -a to update the Operation System\e[0m"
+	    echo -e "\e[32mPlease run soup -d to update the Operation System\e[0m"
         echo ""
         echo 
     else

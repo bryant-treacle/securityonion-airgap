@@ -25,14 +25,17 @@ if docker ps | grep -q so-acng; then
                 echo "Already started!"
         else
 		docker rm so-acng >/dev/null 2>&1
+#		docker run   --restart always   --detach  --volume /opt/airgap/acng/apt-cacher-ng-vol:/var/cache/apt-cacher-ng:rw --volume /etc/apt-cacher-ng/acng.conf:/etc/apt-cacher-ng/acng.conf:rw --publish 3142:3142   --name so-acng securityonionsolutions/acng
+
+
                 docker run --name=so-acng \
                         --restart always \
                         --detach \
                         --volume /opt/airgap/acng/apt-cacher-ng-vol:/var/cache/apt-cacher-ng:rw \
-                        --volume /etc/apt-cacher-ng:/etc/apt-cacher-ng:wr \
+                        --volume /etc/apt-cacher-ng:/etc/apt-cacher-ng:rw\
                         --publish 3142:3142 \
                         $ACNG_OPTIONS \
-			acng
+			securityonionsolutions/acng	
                 #if [ "$ACNG_MASTER_NODE" = "yes" ]; then
                 #        docker exec -it so-acng bash -c "sed -i -e 's/# Offlinemode: 0/Offlinemode: 1/g' /etc/apt-cacher-ng/acng.conf"
                 #        docker stop so-acng
