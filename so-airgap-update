@@ -84,6 +84,7 @@ gateway_function_step_one()
     mkdir -p /etc/apt-cacher-ng/
     cp -av etc/acng.conf /etc/apt-cacher-ng/
     cp -av registry/so-acng-* /usr/sbin && chmod +x /usr/sbin/so-acng-*
+    cp etc/securityonion-ag.conf /etc/nsm/securityonion-ag.conf
     echo ""
     echo -e "\e[32mStarting so-acng docker container.\e[0m"
     #docker run   --restart always   --detach  --volume /opt/airgap/acng/apt-cacher-ng-vol:/var/cache/apt-cacher-ng:rw --publish 127.0.0.1:3142:3142   --name so-acng securityonionsolutions/acng
