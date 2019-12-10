@@ -103,7 +103,7 @@ if [ "$SERVER" == 1 ]; then
         echo "  remoteurl: https://registry-1.docker.io" >> $CONFIG_DIR/config.yml
 
         # Start registry
-        docker run -d --restart=always -p 127.0.0.01:5000:5000 --name so-registry -v $CONFIG_DIR/config.yml:/etc/docker/registry/config.yml registry:2
+        docker run -d --restart=always -p 5000:5000 --name so-registry -v $CONFIG_DIR/config.yml:/etc/docker/registry/config.yml registry:2
 
         # Remove old images and get new ones to generate cache
         #. /usr/sbin/so-elastic-common
@@ -135,13 +135,15 @@ if [ "$SERVER" == 1 ]; then
 
 elif [ "$SENSOR" == 1 ]; then
 
+    source /root/.ssh/securityonion_ssh.conf
+
     # Stop containers and Docker
     so-elastic-stop
     service docker stop
 
     # Configure registry mirror so we can pull from registry
-    if ! grep -q 'localhost:5000' /etc/docker/daemon.json; then
-        sed -i 's|"bip": "172.17.0.1/24"|"bip": "172.17.0.1/24","registry-mirrors": ["http://localhost:5000"]|' /etc/docker/daemon.json
+    if ! grep -q '$SERVERNAME:5000' /etc/docker/daemon.json; then
+        sed -i 's|"bip": "172.17.0.1/24"|"bip": "172.17.0.1/24","registry-mirrors": ["http://'$SERVERNAME':5000"]|' /etc/docker/daemon.json
     fi
 
     # Start Docker back up
