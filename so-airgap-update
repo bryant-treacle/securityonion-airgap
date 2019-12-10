@@ -208,13 +208,47 @@ fi
 ######################
 sensor_function()
 if (whiptail --yesno "\nYou have selected the Sensor option.\n\nPrior to choosing this option you need to run this script on the Master Node.\n\nThis option will is used for the follow Node types:\n - Heavy\n - Storage\n - Forward\n\nDo you wish to continue?" 15 90 --title "Sensor Node") then
+    exitstatus=$?
 	if [ $exitstatus = 0 ] ; then
         cp -av registry/so-registry* /usr/sbin && chmod +x /usr/sbin/so-registry*
         cp registry/so-docker-load /usr/sbin/so-docker-load && chmod +x /usr/sbin/so-docker-load
         cp etc/securityonion-ag.conf /etc/nsm/securityonion-ag.conf
         cp registry/soup /usr/sbin/ && chmod +x /usr/sbin/soup
+        # Add IP Tables rules
+        if (whiptail --yesno "\nIf this is the first time updating this Sensor you will need to add an iptable rule on the Master Node.\n\nDo you like to add this rule now?" 15 90 --title "Sensor Node") then
+            if [ $exitstatus = 0 ] ; then
+                #Get the IP Address of the Sensor for Docker iptables
+                SENSOR_IP=$(hostname -I | cut -d' ' -f1)
+                if (whiptail --yesno "\nIs $SENSOR_IP the Management IP Address of this sensor?" 15 90 --title "Sensor IP Address") then
+                    if [ $exitstatus = 0 ] ; then
+                    #Prompt user for for the Password of the Master Server
+                    MASTER_IP=$(whiptail --inputbox "\nPlease enter the IP Address of the Master Node." 15 65 --title "Master Node IP Address" 3>&1 1>&2 2>&3)
+                    exitstatus=$?
+                        if [ $exitstatus = 0 ] ; then
+                        USERNAME=$(whiptail --inputbox "\nPlease enter the username used to join this Sensor to the Master Node." 15 65 --title "SSH Username" 3>&1 1>&2 2>&3)
+                        exitstatus=$?
+                            if [ $exitstatus = 0 ] ; then
+                                echo ""
+                                echo -e "\e[32mAdding iptable rules for this Sensor on Master Node\e[0m"
+                                sudo ssh -t -i /root/.ssh/securityonion $USERNAME@$MASTER_IP sudo iptables -I DOCKER-USER ! -i docker0 -o docker0 -s $SENSOR_IP -p tcp --dport 3142 -j ACCEPT         
+                            else
+                                sensor_function
+                            fi
+                        else
+                            sensor_function
+                        fi
+                    else
+                        sensor_function
+                    fi
+                else
+                    sensor_function
+                fi
+            else
+                sensor_function
+            fi
+        fi
         echo ""
-	    echo -e "\e[32mPulling Updated Docker Images from Master Node\e[0m"
+        echo -e "\e[32mPulling Updated Docker Images from Master Node\e[0m"
         echo ""
         so-registry-configure -y -n
         echo ""
