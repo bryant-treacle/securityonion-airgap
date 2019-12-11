@@ -163,7 +163,7 @@ if (whiptail --yesno "\nYou have selected the Master node.\n\nPrior to choosing 
                     cp -av registry/so-registry* /usr/sbin && chmod +x /usr/sbin/so-registry*
                     cp registry/so-docker-load /usr/sbin/so-docker-load && chmod +x /usr/sbin/so-docker-load
                     cp etc/securityonion-ag.conf /etc/nsm/securityonion-ag.conf
-                    cp av etc/acng.conf /etc/apt-cacher-ng/
+                    cp -av etc/acng.conf /etc/apt-cacher-ng/
                     cp -av registry/so-acng-* /usr/sbin && chmod +x /usr/sbin/so-acng-*
                     cp registry/soup /usr/sbin/ && chmod +x /usr/sbin/soup
                     # un-tar acng volume
@@ -174,7 +174,7 @@ if (whiptail --yesno "\nYou have selected the Master node.\n\nPrior to choosing 
                     mv $IMAGEDIR /opt/airgap/                
                     /usr/sbin/so-registry-configure -y -n 
                     # Changing so-acng to offline mode
-		            sed -i -e 's/# Offlinemode: 0/Offlinemode: 1/g' /etc/apt-cacher-ng/acng.conf
+		            sed -i -e 's/Offlinemode: 0/Offlinemode: 1/g' /etc/apt-cacher-ng/acng.conf
                     echo ""
                     echo -e "\e[32mStarting so-acng docker container!\e[0m"
                     echo ""
