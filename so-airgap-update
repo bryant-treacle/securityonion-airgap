@@ -53,11 +53,11 @@ fi
 ########################
 gateway_function()
 {
-if (whiptail --yesno "\nYou have selected the Gateway node. It MUST be connected to the internet in order to download the latest Docker images and Operating System patches.\n\nThis will be done in Two Steps.\n\nStep 1. Install An Apt-cacher-ng docker container and save all OS patches.\n\nStep 2.  Update and save the docker images.\n\nDo you wish to continue?" 15 90 --title "Gateway Node") then
+if (whiptail --yesno "\nYou have selected the Gateway node. It MUST be connected to the internet in order to download the latest Docker images and Operating System patches.\n\nThis will be done in Two Steps.\n\nStep 1. Install An Apt-cacher-ng docker container and save all OS patches.\n\nStep 2. Update and save the docker images.\n\nDo you wish to continue?" 15 90 --title "Gateway Node") then
     GATEWAY_STEP=$(whiptail --title "Gateway Step Select" --radiolist \
-    "\nPlease choose from the options below:\n\n" 20 90 6 \
+    "\nPlease choose from the options below:\n\n" 20 70 6 \
     "Step_1" "Initial OS update with apt-cacher-ng          " ON \
-    "Step_2" "Docker Image update and save      " OFF 3>&1 1>&2 2>&3)
+    "Step_2" "Pull the latest Docker Images and Save files      " OFF 3>&1 1>&2 2>&3)
     exitstatus=$?
     if [ $exitstatus = 0 ] ; then
         if [ $GATEWAY_STEP = "Step_1" ] ; then
@@ -263,7 +263,7 @@ fi
 mainmenu() 
 {
 NODE_TYPE=$(whiptail --title "Main Menu" --radiolist \
-    "\nPlease choose from the options below:\n\n" 20 90 6 \
+    "\nPlease choose from the options below:\n\n" 20 70 6 \
     "Gateway" "Requires Internet Connectivity.          " ON \
     "Master" "For Master Node Only.            " OFF \
     "Sensor" "For Heavy, Storage and Forward Nodes.      " OFF 3>&1 1>&2 2>&3)
