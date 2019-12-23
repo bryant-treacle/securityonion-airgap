@@ -103,7 +103,7 @@ if [ "$SERVER" == 1 ]; then
         echo "  remoteurl: https://registry-1.docker.io" >> $CONFIG_DIR/config.yml
 
         # Start registry
-        docker run -d --restart=always -p 127.0.0.01:5000:5000 --name so-registry -v $CONFIG_DIR/config.yml:/etc/docker/registry/config.yml registry:2
+        docker run -d --restart=always -p 5000:5000 --name so-registry -v $CONFIG_DIR/config.yml:/etc/docker/registry/config.yml registry:2
 
         # Remove old images and get new ones to generate cache
         #. /usr/sbin/so-elastic-common
@@ -135,37 +135,19 @@ if [ "$SERVER" == 1 ]; then
 
 elif [ "$SENSOR" == 1 ]; then
 
+    source /root/.ssh/securityonion_ssh.conf
+
     # Stop containers and Docker
     so-elastic-stop
     service docker stop
 
     # Configure registry mirror so we can pull from registry
-    if ! grep -q 'localhost:5000' /etc/docker/daemon.json; then
-        sed -i 's|"bip": "172.17.0.1/24"|"bip": "172.17.0.1/24","registry-mirrors": ["http://localhost:5000"]|' /etc/docker/daemon.json
+    if ! grep -q '$SERVERNAME:5000' /etc/docker/daemon.json; then
+        sed -i 's|"bip": "172.17.0.1/24"|"bip": "172.17.0.1/24","registry-mirrors": ["http://'$SERVERNAME':5000"]|' /etc/docker/daemon.json
     fi
 
     # Start Docker back up
     service docker start
-
-    echo ""
-    echo "We need to add autossh options to /root/.ssh/securityonion_ssh.conf and stop/re-build the autossh tunnel for our changes to take effect..."
-    echo ""
-    if grep -q '6379:localhost:6379' /root/.ssh/securityonion_ssh.conf; then
-       sed -i 's/6379:localhost:6379.*/6379:localhost:6379 -L 5000:localhost:5000 -L 3142:localhost:3142"/g' /root/.ssh/securityonion_ssh.conf
-    elif grep -q '6050:localhost:6050' /root/.ssh/securityonion_ssh.conf; then
-       sed -i 's/6050:localhost:6050.*/6050:localhost:6050 -L 5000:localhost:5000 -L 3142:localhost:3142"/g' /root/.ssh/securityonion_ssh.conf
-    elif ! grep -q '5000:localhost:5000' /root/.ssh/securityonion_ssh.conf; then
-       echo 'AUTOSSH_OPTIONS="-L 5000:localhost:5000 -L 3142:localhost:3142"' >> /root/.ssh/securityonion_ssh.conf
-    
-    fi
-    
-    pkill autossh && /usr/sbin/so-autossh-start
-
-    ps aux | grep autossh
-
-    sleep 2s
-
-    echo
 
     # Remove old containers/images and get new ones from our local registry
     . /usr/sbin/so-elastic-common
