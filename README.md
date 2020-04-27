@@ -32,10 +32,10 @@ Updating the Gateway Node is a two-step process.  Step one will install apt-cach
 5. From the option menu, choose Gateway Node and Step_one when prompted and reboot when complete.
 6. After reboot, launch so-airgap-update script
 7. From the option menu, Choose Gateway Node and Step_two when prompted.
-8. Once complete, copy the contents on securityonion-airgap folder and /opt/airgap/save to the Master Node on the airgap network.
+8. Once complete, copy the `securityonion-airgap` and `/opt/airgap/save` folders to the Master Node on the airgap network.
 
 ## Updating the Master Node
-Do not start this step until you have updated the Gateway Node and transferred the contents on securityonion-airgap folder and /opt/airgap/save to the Master Node.
+Do not start this step until you have updated the Gateway Node and transferred the updated `securityonion-airgap` and `/opt/airgap/save` folders to the Master Node.
 
 1. On the Master Node on the airgap network navigate to the securityonion-airgap directory.
       
@@ -49,7 +49,7 @@ Do not start this step until you have updated the Gateway Node and transferred t
 4. You will be prompted to enter the file location where you saved the securityonion-airgap folder and the /opt/airgap/save folder
 5. Follow the prompts and run Soup with the following switches: 
 
-      `sudo soup -a -d`
+      `sudo soup -d`
       
 6. After Soup has finished Reboot the Node      
 
@@ -64,5 +64,5 @@ After you have updated the Master Node on the airgap network.  Copy the security
 3. From the option menu, choose Sensor Node and follow the prompts.
 4. When prompted to run SOUP use the following switches:
 
-      `sudo soup -a -d`
+      `sudo soup -d`
 5. After Soup has finished Reboot the Node.

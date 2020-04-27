@@ -19,10 +19,15 @@
 
 # Need elevated privilages to write blacklist/whitelist files to /etc/elastalert/rules directory.
 
+. /etc/nsm/securityonion.conf
+
+
 if [[ $(/usr/bin/id -u) -ne 0 ]]; then
         echo "This script needs to be run as root.  Please try again using sudo."
         exit
 fi
+
+current_directory=$(pwd)
 
 ################################
 #   Dialog box color scheme    #
@@ -53,14 +58,15 @@ fi
 ########################
 gateway_function()
 {
-if (whiptail --yesno "\nYou have selected the Gateway node. It MUST be connected to the internet in order to download the latest Docker images and Operating System patches.\n\nThis will be done in Two Steps.\n\nStep 1. Install An Apt-cacher-ng docker container and save all OS patches.\n\nStep 2. Update and save the docker images.\n\nDo you wish to continue?" 15 90 --title "Gateway Node") then
+if (whiptail --yesno "\nYou have selected the Gateway node. It MUST be connected to the internet in order to download the latest Docker images, Operating System patches, and IDS ruleset.\n\nThis will be done in Two Steps.\n\nStep 1. Download latest IDS rulest, install an Apt-cacher-ng docker container and save all OS patches.\n\nStep 2. Update and save the docker images.\n\nDo you wish to continue?" 20 90 --title "Gateway Node") then
     GATEWAY_STEP=$(whiptail --title "Gateway Step Select" --radiolist \
     "\nPlease choose from the options below:\n\n" 20 70 6 \
-    "Step_1" "Initial OS update with apt-cacher-ng          " ON \
-    "Step_2" "Pull the latest Docker Images and Save files      " OFF 3>&1 1>&2 2>&3)
+    "Step_1" "Download latest IDS Ruleset and OS Patches          " ON \
+    "Step_2" "Pull the latest Docker Images      " OFF 3>&1 1>&2 2>&3)
     exitstatus=$?
     if [ $exitstatus = 0 ] ; then
         if [ $GATEWAY_STEP = "Step_1" ] ; then
+	    ids_rule_update
             gateway_function_step_one
         else
             gateway_function_step_two    
@@ -70,6 +76,45 @@ if (whiptail --yesno "\nYou have selected the Gateway node. It MUST be connected
     fi
 fi
 }
+ids_rule_update()
+{
+#  Download the latest IDS Ruleset
+if whiptail --title "Pro IDS Ruleset" --yesno "Do you have an oinkcode for Snort or Suricata Pro rule set?" 8 78; then
+    exitstatus=$?
+    if [[ "$exitstatus" == "0" ]]; then
+        OINKCODE=$(whiptail --inputbox "Please enter your Oinkcode." 8 78 --title "IDS Oinkcode" 3>&1 1>&2 2>&3)
+        exitstatus=$?
+        if [ $exitstatus = 0 ]; then
+            if [[ "$ENGINE" == "snort" ]]; then
+                SNORT_VERSION=$(grep "VERSION" /etc/nsm/sec-onion-16-04-5-vm1-ens34/snort.conf | awk '{print $4}')
+                rm -f emerging.rules.tar.gz > /dev/null 2>&1
+                wget https://rules.emergingthreats.net/$OINKCODE/snort-$SNORT_VERSION/emerging.rules.tar.gz > /dev/null 2>&1
+                whiptail --title "Snort Rules Updated" --infobox "The latest $ENGINE ruleset has been saved to $current_directory/emerging.rules.tar.gz" 8 70  
+            elif [[ "$ENGINE" == "suricata" ]]; then
+                SURICATA_VERSION=$(suricata -V | awk '{ print$5}')
+                rm -f emerging.rules.tar.gz > /dev/null 2>&1
+                wget https://rules.emergingthreats.net/$OINKCODE/suricata-$SURICATA_VERSION/emerging.rules.tar.gz > /dev/null 2>&1
+                whiptail --title "Snort Rules Updated" --infobox "The latest $ENGINE ruleset has been saved to $current_directory/emerging.rules.tar.gz" 8 70
+            fi
+        else
+            ids_rule_update            
+        fi
+    fi
+else
+    if [[ "$ENGINE" == "snort" ]]; then
+        SNORT_VERSION=$(grep "VERSION" /etc/nsm/sec-onion-16-04-5-vm1-ens34/snort.conf | awk '{print $4}')
+        rm -f emerging.rules.tar.gz > /dev/null 2>&1
+        wget https://rules.emergingthreats.net/open/snort-$SNORT_VERSION/emerging.rules.tar.gz > /dev/null 2>&1
+        whiptail --title "Snort Rules Updated" --infobox "The latest $ENGINE ruleset has been saved to $current_directory/emerging.rules.tar.gz" 8 70
+    elif [[ "$ENGINE" == "suricata" ]]; then
+        SURICATA_VERSION=$(suricata -V | awk '{ print$5}')
+        rm -f emerging.rules.tar.gz > /dev/null 2>&1
+        wget https://rules.emergingthreats.net/open/suricata-$SURICATA_VERSION/emerging.rules.tar.gz > /dev/null 2>&1
+        whiptail --title "Snort Rules Updated" --infobox "The latest $ENGINE ruleset has been saved to $current_directory/emerging.rules.tar.gz" 8 70
+    fi
+fi
+}
+
 gateway_function_step_one()
 {
  #   echo ""
@@ -77,7 +122,7 @@ gateway_function_step_one()
  #   git clone https://github.com/bryant-treacle/securityonion-airgap.git
     CURRENT_DIRECTORY=$(pwd)
     echo "" 
-    echo -e "\e[32mBuilding Apt-cacher-ng Docker Container.\e[0m"
+    echo -e "\e[32mBuilding Apt-cacher-ng Docker Container.\e[0m"> /dev/null 2>&1
     echo ""
     docker build -f etc/acng/Dockerfile -t securityonionsolutions/acng .
     mkdir -p /opt/airgap/acng/apt-cacher-ng-vol/
@@ -157,6 +202,29 @@ if (whiptail --yesno "\nYou have selected the Master node.\n\nPrior to choosing 
                             fi
                         fi 
                     fi
+                    # Prompt User if they want to run rule update Now!
+                    if [[ -f emerging.rules.tar.gz ]]; then
+                        ETPRO_HASH_CURRENT=$(md5sum $ACNGDIR/emerging.rules.tar.gz | awk '{ print $1 }')
+                        # Check to see if emerging.rules.tar.gz exists in /opt/emergingthreats/ folder
+                        if [[ -f /opt/emergingthreats/emerging.rules.tar.gz ]]; then
+                            ETPRO_HASH_OLD=$(md5sum /opt/emergingthreats/emerging.rules.tar.gz | awk '{ print $1 }')
+                            if [ $ETPRO_HASH_CURRENT != $ETPRO_HASH_OLD ]; then
+                                if (whiptail --title "Updated Ruleset" --yesno "Looks like there is an updated IDS rule set.  Would you like to run rule-update now?" 8 78); then
+                                cp emerging.rules.tar.gz /opt/emergingthreats/
+                                rule-update
+                                fi
+                            else
+                                echo "Ruleset already up to date"
+                            fi
+                        else
+                            if (whiptail --title "Updated Ruleset" --yesno "Looks like there is an updated IDS rule set.  Would you like to run rule-update now?" 8 78); then
+                                cp emerging.rules.tar.gz /opt/emergingthreats/
+                                rule-update
+                            fi
+                        fi
+                    else
+                        echo "Could not locate the latest emerging.rules.tar.gz file."
+                    fi
                     # Make a directory to mount to acng docker container
                     mkdir -p /opt/airgap/
                     mkdir -p /etc/apt-cacher-ng/
@@ -174,17 +242,11 @@ if (whiptail --yesno "\nYou have selected the Master node.\n\nPrior to choosing 
                     mv $IMAGEDIR /opt/airgap/                
                     /usr/sbin/so-registry-configure -y -n 
                     # Changing so-acng to offline mode
-		            sed -i -e 's/Offlinemode: 0/Offlinemode: 1/g' /etc/apt-cacher-ng/acng.conf
+		    sed -i -e 's/Offlinemode: 0/Offlinemode: 1/g' /etc/apt-cacher-ng/acng.conf
                     echo ""
                     echo -e "\e[32mStarting so-acng docker container!\e[0m"
                     echo ""
- #                  docker run   --restart always   --detach  --volume /opt/airgap/acng/apt-cacher-ng-vol:/var/cache/apt-cacher-ng:rw --publish 127.0.0.1:3142:3142   --name so-acng securityonionsolutions/acng
                     so-acng-start
- #                  echo ""
- #                  echo -e "\e[32mReloading so-acng docker container.\e[0m"
- #                  echo ""
- #                  docker stop so-acng
- #                  docker start so-acng 
                     echo ""
                     echo -e "\e[32mConfiguring Host to pull updates from so-acng.\e[0m"
                     echo ""
