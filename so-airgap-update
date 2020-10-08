@@ -86,8 +86,9 @@ if whiptail --title "Pro IDS Ruleset" --yesno "Do you have an oinkcode for Snort
         exitstatus=$?
         if [ $exitstatus = 0 ]; then
             if [[ "$ENGINE" == "snort" ]]; then
-                SNORT_VERSION=$(grep "VERSION" /etc/nsm/sec-onion-16-04-5-vm1-ens34/snort.conf | awk '{print $4}')
+                SNORT_VERSION=$(grep "VERSION" /etc/nsm/*/snort.conf | awk '{print $4}' | sort -u)
                 rm -f emerging.rules.tar.gz > /dev/null 2>&1
+		echo "Downloading the latest IDS rules."
                 wget https://rules.emergingthreats.net/$OINKCODE/snort-$SNORT_VERSION/emerging.rules.tar.gz > /dev/null 2>&1
                 whiptail --title "Snort Rules Updated" --infobox "The latest $ENGINE ruleset has been saved to $current_directory/emerging.rules.tar.gz" 8 70  
             elif [[ "$ENGINE" == "suricata" ]]; then
@@ -102,9 +103,10 @@ if whiptail --title "Pro IDS Ruleset" --yesno "Do you have an oinkcode for Snort
     fi
 else
     if [[ "$ENGINE" == "snort" ]]; then
-        SNORT_VERSION=$(grep "VERSION" /etc/nsm/sec-onion-16-04-5-vm1-ens34/snort.conf | awk '{print $4}')
+        SNORT_VERSION=$(grep "VERSION" /etc/nsm/*/snort.conf | awk '{print $4}' | sort -u)
         rm -f emerging.rules.tar.gz > /dev/null 2>&1
-        wget https://rules.emergingthreats.net/open/snort-$SNORT_VERSION/emerging.rules.tar.gz > /dev/null 2>&1
+        echo "Downloading the latest IDS rules."
+	wget https://rules.emergingthreats.net/open/snort-$SNORT_VERSION/emerging.rules.tar.gz > /dev/null 2>&1
         whiptail --title "Snort Rules Updated" --infobox "The latest $ENGINE ruleset has been saved to $current_directory/emerging.rules.tar.gz" 8 70
     elif [[ "$ENGINE" == "suricata" ]]; then
         SURICATA_VERSION=$(suricata -V | awk '{ print$5}')
